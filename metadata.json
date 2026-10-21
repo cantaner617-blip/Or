@@ -1,0 +1,6 @@
+{
+  "name": "AnlıkResim",
+  "description": "Karanlık temalı, üyelikli veya üyeliksiz hızlı, sınırsız resim yükleme ve paylaşma platformu (anlikresim.com).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

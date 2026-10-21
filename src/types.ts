@@ -1,0 +1,122 @@
+export interface User {
+  id: string;
+  username: string;
+  email: string;
+  createdAt: string;
+  isAdmin?: boolean;
+  isPremium?: boolean;
+  premiumExpiresAt?: string | null;
+  premiumPlan?: 'monthly' | 'yearly' | null;
+}
+
+export interface ImageRecord {
+  id: string;
+  userId: string | null;
+  url: string;
+  filename: string;
+  format: string;
+  bytes: number;
+  width: number;
+  height: number;
+  views: number;
+  createdAt: string;
+  expiresAt?: string | null;
+  deleteAfter?: string | null;
+}
+
+export interface Announcement {
+  id: string;
+  message: string;
+  template: 'info' | 'warning' | 'success';
+  createdAt: string;
+}
+
+export interface AbuseReport {
+  id: string;
+  imageId?: string | null;
+  imageUrl?: string | null;
+  reporterName: string;
+  reporterEmail: string;
+  reason: string;
+  description: string;
+  status: 'pending' | 'resolved';
+  createdAt: string;
+}
+
+export interface SupportMessage {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  status: 'unread' | 'read' | 'resolved';
+  createdAt: string;
+  isPremium?: boolean;
+  adminReply?: string;
+  repliedAt?: string;
+}
+
+export interface SecurityLog {
+  id: string;
+  ip: string;
+  action: 'blocked' | 'rate_limited' | 'banned' | 'whitelisted' | 'suspicious';
+  reason: string;
+  endpoint: string;
+  timestamp: string;
+}
+
+export interface SecurityStats {
+  ddosProtectionEnabled: boolean;
+  rateLimitGlobal: number;
+  rateLimitAuth: number;
+  rateLimitUpload: number;
+  botProtectionEnabled: boolean;
+  maliciousPayloadProtection: boolean;
+  totalBlockedRequests: number;
+  activeBansCount: number;
+  blacklist: string[];
+  whitelist: string[];
+  activeBans: { ip: string; expiresAt: string; reason: string }[];
+  recentLogs: SecurityLog[];
+}
+
+export interface SystemStatus {
+  isCloudinaryConfigured: boolean;
+  localFallbackActive: boolean;
+  maintenanceMode: boolean;
+  announcement: string | null;
+  announcementTemplate: string | null;
+  announcements?: Announcement[];
+  guestUploadLimit?: number;
+  adEnabled?: boolean;
+  adImageUrl?: string;
+  adTargetUrl?: string;
+  adTitle?: string;
+  adDescription?: string;
+  adButtonText?: string;
+  adDuration?: number;
+  premiumEnabled?: boolean;
+  premiumMonthlyPrice?: number;
+  premiumYearlyPrice?: number;
+  adShowToRegistered?: boolean;
+  bankName?: string;
+  bankIban?: string;
+  bankReceiver?: string;
+  adsenseEnabled?: boolean;
+  adsensePublisherId?: string;
+  adsenseAutoAdsEnabled?: boolean;
+  adsenseResponsiveAdsEnabled?: boolean;
+  instagramUrl?: string;
+  twitterUrl?: string;
+  // Anti-DDoS & Security Status
+  ddosProtectionEnabled?: boolean;
+  rateLimitGlobal?: number;
+  rateLimitAuth?: number;
+  rateLimitUpload?: number;
+  botProtectionEnabled?: boolean;
+  maliciousPayloadProtection?: boolean;
+  ipBlacklist?: string[];
+  ipWhitelist?: string[];
+}
+
+export type ViewType = 'home' | 'my-images' | 'login' | 'register' | 'detail' | 'admin' | 'hakkimizda' | 'sartlar' | 'yardim' | 'premium';
