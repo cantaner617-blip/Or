@@ -135,6 +135,23 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('X-DDoS-Protection', 'Active');
 
+  const rawUrl = req.originalUrl || req.url || '';
+  const pathname = (req.path || rawUrl.split('?')[0] || '').toLowerCase();
+
+  // 0. Completely exempt static assets, Vite dev server modules, and frontend pages from rate limiting and flood counters
+  const isStaticOrDev = 
+    pathname.startsWith('/@') ||
+    pathname.startsWith('/src/') ||
+    pathname.startsWith('/assets/') ||
+    pathname.startsWith('/public/') ||
+    pathname.startsWith('/node_modules/') ||
+    pathname === '/favicon.ico' ||
+    /\.(js|mjs|ts|tsx|css|webp|png|jpe?g|gif|svg|ico|woff2?|ttf|eot|map|json|html)$/i.test(pathname);
+
+  if (isStaticOrDev || !pathname.startsWith('/api')) {
+    return next();
+  }
+
   const sysConfig = db.getSystemConfig();
   const ddosEnabled = sysConfig.ddosProtectionEnabled !== false;
 
@@ -148,6 +165,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   // 1. Check Whitelist
   const whitelist = sysConfig.ipWhitelist || [];
   if (whitelist.includes(clientIp)) {
+    temporaryBans.delete(clientIp);
     res.setHeader('X-Security-Bypass', 'Whitelisted');
     return next();
   }
@@ -187,12 +205,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
   // 4. Inspect Malicious Payloads / Automated Scanners
   if (sysConfig.maliciousPayloadProtection !== false) {
-    const rawUrl = req.originalUrl || req.url || '';
     const suspiciousPatterns = [
       /<script\b/i,
       /UNION\s+SELECT/i,
       /SELECT\s+.*\s+FROM/i,
-      /\.\.\/\.\./,
       /etc\/passwd/i,
       /eval\(/i
     ];
@@ -210,7 +226,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
   }
 
-  // 5. Rate Limiting Logic
+  // 5. Rate Limiting Logic (Only counts backend API requests)
   let tracker = requestTrackers.get(clientIp);
   if (!tracker) {
     tracker = {
@@ -221,18 +237,18 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     requestTrackers.set(clientIp, tracker);
   }
 
-  // Global Rate Limit
+  // Global Rate Limit for API calls
   if (now > tracker.global.resetAt) {
     tracker.global.count = 0;
     tracker.global.resetAt = now + 60000;
   }
   tracker.global.count++;
 
-  const limitGlobal = sysConfig.rateLimitGlobal || 120;
+  const limitGlobal = sysConfig.rateLimitGlobal || 600;
   if (tracker.global.count > limitGlobal) {
     totalBlockedRequestsCount++;
-    // If request rate is > 2.5x threshold, trigger 15-min auto ban
-    if (tracker.global.count > limitGlobal * 2.5) {
+    // If request rate is > 3x threshold (e.g. > 1800 req/min on API), trigger 15-min auto ban
+    if (tracker.global.count > limitGlobal * 3) {
       const banDurationMs = 15 * 60 * 1000; // 15 mins
       temporaryBans.set(clientIp, {
         expiresAt: now + banDurationMs,
@@ -248,7 +264,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
       db.addSecurityLog({
         ip: clientIp,
         action: 'rate_limited',
-        reason: `Genel istek limiti aşıldı (${limitGlobal} req/dk)`,
+        reason: `Genel API istek limiti aşıldı (${limitGlobal} req/dk)`,
         endpoint: req.originalUrl || req.url
       });
     }
@@ -273,7 +289,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
     tracker.auth.count++;
 
-    const limitAuth = sysConfig.rateLimitAuth || 10;
+    const limitAuth = sysConfig.rateLimitAuth || 30;
     if (tracker.auth.count > limitAuth) {
       totalBlockedRequestsCount++;
       if (tracker.auth.count === limitAuth + 1) {
@@ -294,7 +310,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
 
   // Upload Endpoint Rate Limit (Storage Flooding Protection)
-  const isUploadRoute = req.originalUrl === '/api/upload';
+  const isUploadRoute = req.originalUrl.startsWith('/api/upload');
   if (isUploadRoute) {
     if (now > tracker.upload.resetAt) {
       tracker.upload.count = 0;
@@ -302,7 +318,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     }
     tracker.upload.count++;
 
-    const limitUpload = sysConfig.rateLimitUpload || 15;
+    const limitUpload = sysConfig.rateLimitUpload || 120;
     if (tracker.upload.count > limitUpload) {
       totalBlockedRequestsCount++;
       if (tracker.upload.count === limitUpload + 1) {
@@ -1126,14 +1142,14 @@ app.post('/api/upload', optionalAuth, upload.single('image'), async (req: AuthRe
       id: fileId,
       userId: req.user ? req.user.id : null,
       url: imageUrl,
-      publicId,
+      publicId: publicId || null,
       filename,
       format,
       bytes,
       width,
       height,
-      expiresAt,
-      deleteAfter,
+      expiresAt: expiresAt || null,
+      deleteAfter: deleteAfter || 'never',
     });
 
     const siteUrlVal = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
@@ -1421,9 +1437,9 @@ app.get('/api/admin/security/stats', requireAdmin, (req: AuthRequest, res) => {
 
   res.json({
     ddosProtectionEnabled: sysConfig.ddosProtectionEnabled !== false,
-    rateLimitGlobal: sysConfig.rateLimitGlobal || 120,
-    rateLimitAuth: sysConfig.rateLimitAuth || 10,
-    rateLimitUpload: sysConfig.rateLimitUpload || 15,
+    rateLimitGlobal: sysConfig.rateLimitGlobal || 600,
+    rateLimitAuth: sysConfig.rateLimitAuth || 30,
+    rateLimitUpload: sysConfig.rateLimitUpload || 120,
     botProtectionEnabled: sysConfig.botProtectionEnabled !== false,
     maliciousPayloadProtection: sysConfig.maliciousPayloadProtection !== false,
     totalBlockedRequests: totalBlockedRequestsCount,
@@ -1450,9 +1466,9 @@ app.post('/api/admin/security/config', requireAdmin, (req: AuthRequest, res) => 
   const updated = db.updateSystemConfig({
     ...currentSysConfig,
     ddosProtectionEnabled: ddosProtectionEnabled === true,
-    rateLimitGlobal: typeof rateLimitGlobal === 'number' ? rateLimitGlobal : 120,
-    rateLimitAuth: typeof rateLimitAuth === 'number' ? rateLimitAuth : 10,
-    rateLimitUpload: typeof rateLimitUpload === 'number' ? rateLimitUpload : 15,
+    rateLimitGlobal: typeof rateLimitGlobal === 'number' ? rateLimitGlobal : 600,
+    rateLimitAuth: typeof rateLimitAuth === 'number' ? rateLimitAuth : 30,
+    rateLimitUpload: typeof rateLimitUpload === 'number' ? rateLimitUpload : 120,
     botProtectionEnabled: botProtectionEnabled === true,
     maliciousPayloadProtection: maliciousPayloadProtection === true
   });

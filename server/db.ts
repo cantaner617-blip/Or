@@ -151,9 +151,9 @@ function initDb(): DatabaseSchema {
       premiumYearlyPrice: 1200,
       adShowToRegistered: true,
       ddosProtectionEnabled: true,
-      rateLimitGlobal: 120,
-      rateLimitAuth: 10,
-      rateLimitUpload: 15,
+      rateLimitGlobal: 600,
+      rateLimitAuth: 30,
+      rateLimitUpload: 120,
       botProtectionEnabled: true,
       maliciousPayloadProtection: true,
       ipBlacklist: [],
@@ -244,13 +244,13 @@ function initDb(): DatabaseSchema {
         parsed.systemConfig.ddosProtectionEnabled = true;
       }
       if (parsed.systemConfig.rateLimitGlobal === undefined) {
-        parsed.systemConfig.rateLimitGlobal = 120;
+        parsed.systemConfig.rateLimitGlobal = 600;
       }
       if (parsed.systemConfig.rateLimitAuth === undefined) {
-        parsed.systemConfig.rateLimitAuth = 10;
+        parsed.systemConfig.rateLimitAuth = 30;
       }
       if (parsed.systemConfig.rateLimitUpload === undefined) {
-        parsed.systemConfig.rateLimitUpload = 15;
+        parsed.systemConfig.rateLimitUpload = 120;
       }
       if (parsed.systemConfig.botProtectionEnabled === undefined) {
         parsed.systemConfig.botProtectionEnabled = true;
@@ -283,9 +283,9 @@ const dbState = initDb();
 // Set user's Bunny.net storage configuration
 if (dbState.systemConfig) {
   dbState.systemConfig.bunnyStorageEnabled = true;
-  dbState.systemConfig.bunnyStorageZoneName = 'resimyukle-depom';
-  dbState.systemConfig.bunnyStorageApiKey = '40458e2e-4095-4463-8a6eab2f494b-2d84-4c63';
-  dbState.systemConfig.bunnyStoragePullZoneUrl = 'https://resim-cdn.b-cdn.net';
+  dbState.systemConfig.bunnyStorageZoneName = 'taner';
+  dbState.systemConfig.bunnyStorageApiKey = '0cf3db7e-1938-4438-9b366f96dd67-6a06-4122';
+  dbState.systemConfig.bunnyStoragePullZoneUrl = 'https://oyeaga.b-cdn.net';
   dbState.systemConfig.bunnyStorageRegion = '';
   saveDb();
 }
@@ -347,6 +347,19 @@ async function initFirestoreConnection() {
     console.error("Failed to initialize Firebase Client SDK or Firestore:", error);
     return null;
   }
+}
+
+function sanitizeForFirestore(obj: any): any {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitizeForFirestore);
+  const cleaned: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined) {
+      cleaned[key] = sanitizeForFirestore(val);
+    }
+  }
+  return cleaned;
 }
 
 export const db = {
@@ -424,9 +437,9 @@ export const db = {
 
         // Force keep the user's correct Bunny.net storage configurations
         dbState.systemConfig.bunnyStorageEnabled = true;
-        dbState.systemConfig.bunnyStorageZoneName = 'resimyukle-depom';
-        dbState.systemConfig.bunnyStorageApiKey = '40458e2e-4095-4463-8a6eab2f494b-2d84-4c63';
-        dbState.systemConfig.bunnyStoragePullZoneUrl = 'https://resim-cdn.b-cdn.net';
+        dbState.systemConfig.bunnyStorageZoneName = 'taner';
+        dbState.systemConfig.bunnyStorageApiKey = '0cf3db7e-1938-4438-9b366f96dd67-6a06-4122';
+        dbState.systemConfig.bunnyStoragePullZoneUrl = 'https://oyeaga.b-cdn.net';
         dbState.systemConfig.bunnyStorageRegion = '';
         await setDoc(configDocRef, dbState.systemConfig);
         
@@ -569,7 +582,7 @@ export const db = {
     saveDb();
 
     if (isFirebaseInitialized && firestore) {
-      setDoc(doc(firestore, 'images', newImage.id), newImage).catch((err: any) => {
+      setDoc(doc(firestore, 'images', newImage.id), sanitizeForFirestore(newImage)).catch((err: any) => {
         console.error("Failed to save image to Firestore:", err);
       });
     }
@@ -584,7 +597,7 @@ export const db = {
       saveDb();
 
       if (isFirebaseInitialized && firestore) {
-        setDoc(doc(firestore, 'images', id), img).catch((err: any) => {
+        setDoc(doc(firestore, 'images', id), sanitizeForFirestore(img)).catch((err: any) => {
           console.error("Failed to update image views in Firestore:", err);
         });
       }
